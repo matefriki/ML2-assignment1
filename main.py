@@ -18,8 +18,14 @@ def task1():
     
     """ Start of your code
     """
+    def p_z(z):
+        if z <= 0:
+            return 0
+        return (1 / np.sqrt(2 * np.pi * z)) * np.exp(-0.5 * z)
 
-    
+    integral_result, error_estimate = quad(p_z, 0, np.inf)
+    print("Integral result: ", integral_result)
+
     """ End of your code
     """
 
