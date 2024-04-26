@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 from scipy.integrate import quad
+from scipy.stats import multivariate_normal
+
 
 def task1():
     # probability density functions with change of variables, check that you obtain a valid transformed pdf
@@ -40,13 +42,13 @@ def task2(x, K):
             - plot the 8 samples that were sampled from the fitted GMM
     """
     
-    mu, sigma, pi = [], [], np.zeros((K)) # modify this later
+    mu, sigma, pi = [], [], np.zeros((K))  # modify this later
     num_samples = 10
 
-    fig1, ax1 = plt.subplots(2, K, figsize=(2*K,4))
+    fig1, ax1 = plt.subplots(2, K, figsize=(2*K, 4))
     fig1.suptitle('Task 2 - GMM components', fontsize=16)
 
-    fig2, ax2 = plt.subplots(2, num_samples//2, figsize=(2*num_samples//2,4))
+    fig2, ax2 = plt.subplots(2, num_samples//2, figsize=(2*num_samples//2, 4))
     fig2.suptitle('Task 2 - samples', fontsize=16)
 
     """ Start of your code
@@ -77,6 +79,69 @@ def task2(x, K):
             break
         mu = new_mu
     print(j)
+
+    ### TASK 1.4
+    # Compute the log likelihood
+    def log_pdf_multivariate_normal(x, mean, cov):
+        """
+        Compute log PDF of a multivariate normal distribution.
+        """
+        part1 = -0.5 * np.log(np.linalg.det(cov))
+        part2 = -0.5 * np.dot((x - mean).T, np.linalg.solve(cov, (x - mean)))
+        part3 = -0.5 * len(mean) * np.log(2 * np.pi)
+        return part1 + part2 + part3
+
+    def logsumexp(a):
+        a_max = np.max(a)
+        sum_exp = np.sum(np.exp(a - a_max))
+        result = np.log(sum_exp) + a_max
+        return result
+
+    def log_likelihood(x, mu, sigma, pi, K):
+        ll = 0
+        for s in range(x.shape[0]):
+            log_probs = [np.log(pi[k]) + log_pdf_multivariate_normal(x[s].reshape(-1), mu[k], sigma[k]) for k in
+                         range(K)]
+            ll += logsumexp(log_probs)
+        return ll
+
+    # EM algorithm
+    eps = 1e-4
+    J = 100
+    ll_old = float('-inf')
+    ll_new = log_likelihood(x, mu, sigma, pi, K)
+
+    for j in range(J):
+        # E-step
+        log_w = np.zeros((x.shape[0], K))
+        for s in range(x.shape[0]):
+            log_probs = [np.log(pi[k]) + log_pdf_multivariate_normal(x[s].reshape(-1), mu[k], sigma[k]) for k in
+                         range(K)]
+            log_w[s, :] = log_probs - logsumexp(log_probs)  # Subtract logsumexp to normalize and avoid overflow
+
+        w = np.exp(log_w)  # Convert log weights back to normal scale for updates
+
+        # M-step
+        for k in range(K):
+            N_k = w[:, k].sum()
+            mu[k] = np.dot(w[:, k], x) / N_k
+            delta_x = x - mu[k]
+
+            sigma[k] = np.zeros((D, D))
+            for s in range(x.shape[0]):
+                outer_s = np.outer(delta_x[s], delta_x[s])
+                sigma[k] += w[s, k] * outer_s
+            sigma[k] /= N_k
+
+            pi[k] = N_k / x.shape[0]
+
+        # Check for convergence
+        ll_old = ll_new
+        ll_new = log_likelihood(x, mu, sigma, pi, K)
+        if np.abs(ll_new - ll_old) <= eps:
+            break
+    print(j)
+
     """ End of your code
     """
 
