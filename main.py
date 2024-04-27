@@ -10,6 +10,8 @@ IMPORTANT:
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from tqdm import tqdm
+import scipy
 
 from scipy.integrate import quad
 from scipy.stats import multivariate_normal
@@ -53,10 +55,15 @@ def task2(x, K):
 
     """ Start of your code
     """
-    ### TASK 1.2
 
+    np.random.seed(42)
+    ### TASK 1.2
+    # print(f"{np.shape(x)=}")
+    x = x[:500, :, :]
+    print(f"{np.shape(x)=}")
     M = np.shape(x)[1]
     D = M*M
+    S = np.shape(x)[0]
     mu = np.random.rand(K, D)
     pi = np.random.rand(K)
     sigma = np.array([np.identity(D) for k in range(K)])
@@ -78,10 +85,38 @@ def task2(x, K):
         if np.allclose(mu, new_mu, atol=eps):
             break
         mu = new_mu
-    print(j)
+    print(f"Finished k-means with {j=}")
 
     ### TASK 1.4
     # Compute the log likelihood
+
+    def compute_cholesky_decomp(sigma_in):
+        cholesky = np.empty_like(sigma_in)
+        # Compute the Cholesky decomposition for each k
+        for k in range(K):
+            cholesky[k] = np.linalg.cholesky(sigma_in[k] + (1e-4)*np.eye(D))
+        log_det_sigma_half = np.zeros(K)
+        for k in range(K):
+            # det_sigma_half[k] = np.prod(np.diag(cholesky[k]))
+            log_det_sigma_half[k] = np.sum(np.log(np.diag(cholesky[k])))
+        # print("\n**************\nCholesky:")
+        # print(np.diag(cholesky[0]))
+        # print("\n**************\nEnd Cholesky\n")
+        return cholesky, log_det_sigma_half
+
+    def logsumexp_stable(weights, exps):
+        e_max = np.max(exps)
+        return e_max + np.log(np.sum(np.exp(exps - e_max))) 
+
+
+    def log_likelihood(x, mu, sigma, pi, K, cholesky, log_det_sigma_half, exps):
+        ll = 0
+        
+        llarray = np.zeros(S)
+        for s in tqdm(range(S)):
+            llarray[s] = logsumexp_stable(pi, exps=exps[s] - 0.5*log_det_sigma_half )
+        return np.sum(llarray)
+    
     def log_pdf_multivariate_normal(x, mean, cov):
         """
         Compute log PDF of a multivariate normal distribution.
@@ -97,50 +132,117 @@ def task2(x, K):
         result = np.log(sum_exp) + a_max
         return result
 
-    def log_likelihood(x, mu, sigma, pi, K):
-        ll = 0
-        for s in range(x.shape[0]):
-            log_probs = [np.log(pi[k]) + log_pdf_multivariate_normal(x[s].reshape(-1), mu[k], sigma[k]) for k in
-                         range(K)]
-            ll += logsumexp(log_probs)
-        return ll
+
+
 
     # EM algorithm
     eps = 1e-4
     J = 100
-    ll_old = float('-inf')
-    ll_new = log_likelihood(x, mu, sigma, pi, K)
+    ll_old = 0
+    exps = np.zeros((S, K))
+    print(f"{np.shape(exps)=}")
+    responsibilities = np.zeros((S,K))
+    stopping_criterion = False
+    print(f"{ll_old=}")
+    # print(f"{ll_gab=}")
+    
 
     for j in range(J):
-        # E-step
-        log_w = np.zeros((x.shape[0], K))
-        for s in range(x.shape[0]):
-            log_probs = [np.log(pi[k]) + log_pdf_multivariate_normal(x[s].reshape(-1), mu[k], sigma[k]) for k in
-                         range(K)]
-            log_w[s, :] = log_probs - logsumexp(log_probs)  # Subtract logsumexp to normalize and avoid overflow
+        print(f"hola {j}")
+        # pre-computations
+        cholesky, log_det_sigma_half = compute_cholesky_decomp(sigma)
+        
+        for s in range(S):
+            for k in range(K):
+                # When computing (x-mu)Sigma-1(x-mu), it is equal to (x-mu)^T(L*L^T)^-1(x-mu) = (L^-1(x-mu))^T*(L^-1(x-mu))
+                # Making a change of variables aux = L^-1(x-mu), then the exp is equal to aux^T*aux
+                # computing aux with scipy is much faster, but scipy may not be allowed in the assignment
+                # comment/uncomment on your convenience
 
-        w = np.exp(log_w)  # Convert log weights back to normal scale for updates
+                # aux = np.linalg.solve(cholesky[k], x[s].flatten() - mu[k])
+                aux = scipy.linalg.cho_solve((cholesky[k], True), x[s].flatten() - mu[k])
+                exps[s,k] = (-0.5)*np.dot(aux,aux)
 
-        # M-step
-        for k in range(K):
-            N_k = w[:, k].sum()
-            mu[k] = np.dot(w[:, k], x) / N_k
-            delta_x = x - mu[k]
 
-            sigma[k] = np.zeros((D, D))
-            for s in range(x.shape[0]):
-                outer_s = np.outer(delta_x[s], delta_x[s])
-                sigma[k] += w[s, k] * outer_s
-            sigma[k] /= N_k
-
-            pi[k] = N_k / x.shape[0]
-
-        # Check for convergence
+        ll_new = log_likelihood(x, mu, sigma, pi, K, cholesky, log_det_sigma_half, exps)
+    
+        if j > 0:
+            print(f"{ll_new=}, {ll_old=}")
+            if np.abs(ll_old - ll_new) < eps:
+                break
         ll_old = ll_new
-        ll_new = log_likelihood(x, mu, sigma, pi, K)
-        if np.abs(ll_new - ll_old) <= eps:
+        # compute responsibilities
+        # for s in range(S):
+        #     for k in range(K):
+        #         responsibilities[s, k] = (pi[k]/det_sigma_half[k])*np.exp(exps[s,k])
+
+        # responsibilities = (pi)*np.exp(exps-0.5*log_det_sigma_half)
+        
+        logres = np.log(pi) + exps-0.5*log_det_sigma_half
+        logres = logres - np.max(logres)
+        responsibilities = np.exp(logres)
+
+        
+
+        # for s in range(S):
+        #     thesum = np.sum(responsibilities[s,:])
+        #     responsibilities[s, :] = responsibilities[s,:]/thesum
+        thesum = np.sum(responsibilities, axis=1)  # Sum along each row
+        responsibilities = responsibilities / thesum[:, np.newaxis]  # Divide each row element-wise by the sum
+
+        print("Check Nans")
+        if np.isnan(responsibilities).any():
+            print("pi: ")
+            print(pi)
+            print("det_sigma_half")
+            print(log_det_sigma_half)
+            print("exps")
+            print(exps)
+            print("responsibilities")
+            print(responsibilities)
             break
-    print(j)
+        # print(np.isnan(responsibilities).any())
+        
+        N = np.sum(responsibilities, axis = 0)
+
+        for k in range(K):
+            # aux = np.zeros((S, M, M))
+            # for s in range(S):
+            #     for m1 in range(M):
+            #         for m2 in range(M):
+            #             aux[s,m1,m2] = responsibilities[s, k]*x[s,m1,m2]
+            aux = responsibilities[:, k][:, np.newaxis, np.newaxis] * x
+            mu[k] = np.sum(aux, axis=0).flatten()/N[k]
+
+        # # x has shape (S, D)
+        # # mu has shape (D, )
+        # # w has shape (S, )
+        # xmu = np.zeros((S, D))
+        # for s in range(S):
+        #     for d in range(D):
+        #         xmu[s,d] = x[s,d] - mu[d]
+        # bigmat = np.zeros((S, D, D))
+        # for s in range(S):
+        #     for d1 in range(D):
+        #         for d2 in range(D):
+        #             bigmat[s, d1, d2] = w[s]*xmu[s, d1, d2]*xmu[s, d2, d1]
+        
+        for k in range(K):
+            xmu = x.reshape([S,D]) - mu[k]
+            # Calculate outer products for each sample and scale by w
+            # First, calculate the outer product for each 's' without the weights
+            bigmat = np.einsum('si,sj->sij', xmu, xmu)
+
+            # Now, multiply by w, which is reshaped to (S, 1, 1) for broadcasting
+            bigmat *= responsibilities[:, k][:, np.newaxis, np.newaxis]
+            sigma[k] = np.sum(bigmat, axis=0)/N[k]
+        
+        pi = N/S
+    
+    print(f"Finished with {j=}")
+
+
+    
 
     """ End of your code
     """
