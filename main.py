@@ -59,7 +59,7 @@ def task2(x, K):
     np.random.seed(42)
     ### TASK 1.2
     # print(f"{np.shape(x)=}")
-    x = x[:500, :, :]
+    # x = x[:2000, :, :]
     print(f"{np.shape(x)=}")
     M = np.shape(x)[1]
     D = M*M
@@ -179,16 +179,29 @@ def task2(x, K):
         # responsibilities = (pi)*np.exp(exps-0.5*log_det_sigma_half)
         
         logres = np.log(pi) + exps-0.5*log_det_sigma_half
-        logres = logres - np.max(logres)
-        responsibilities = np.exp(logres)
+        for s in range(S):
+            logres[s,:] = logres[s,:] - np.max(logres[s,:])
+            responsibilities[s,:] = np.exp(logres[s,:])
+            thesum = np.sum(responsibilities[s,:])
+            responsibilities[s,:] = responsibilities[s,:]/thesum
+
+        # print("previous logres")
+        # print(logres)
+        # logres = logres - np.max(logres)
+        # responsibilities = np.exp(logres)
+
+        # print("Previous responsibilities")
+        # print(responsibilities)
+        # print("logres")
+        # print(logres)
 
         
 
-        # for s in range(S):
-        #     thesum = np.sum(responsibilities[s,:])
-        #     responsibilities[s, :] = responsibilities[s,:]/thesum
-        thesum = np.sum(responsibilities, axis=1)  # Sum along each row
-        responsibilities = responsibilities / thesum[:, np.newaxis]  # Divide each row element-wise by the sum
+        # # for s in range(S):
+        # #     thesum = np.sum(responsibilities[s,:])
+        # #     responsibilities[s, :] = responsibilities[s,:]/thesum
+        # thesum = np.sum(responsibilities, axis=1)  # Sum along each row
+        # responsibilities = responsibilities / thesum[:, np.newaxis]  # Divide each row element-wise by the sum
 
         print("Check Nans")
         if np.isnan(responsibilities).any():
@@ -198,6 +211,8 @@ def task2(x, K):
             print(log_det_sigma_half)
             print("exps")
             print(exps)
+            print("the_sum")
+            print(thesum)
             print("responsibilities")
             print(responsibilities)
             break
