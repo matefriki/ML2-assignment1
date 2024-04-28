@@ -106,33 +106,15 @@ def task2(x, K):
 
     def logsumexp_stable(weights, exps):
         e_max = np.max(exps)
-        return e_max + np.log(np.sum(np.exp(exps - e_max))) 
+        return e_max + np.log(np.sum(np.exp(exps - e_max)))
 
 
     def log_likelihood(x, mu, sigma, pi, K, cholesky, log_det_sigma_half, exps):
         ll = 0
-        
         llarray = np.zeros(S)
         for s in tqdm(range(S)):
             llarray[s] = logsumexp_stable(pi, exps=exps[s] - 0.5*log_det_sigma_half )
         return np.sum(llarray)
-    
-    def log_pdf_multivariate_normal(x, mean, cov):
-        """
-        Compute log PDF of a multivariate normal distribution.
-        """
-        part1 = -0.5 * np.log(np.linalg.det(cov))
-        part2 = -0.5 * np.dot((x - mean).T, np.linalg.solve(cov, (x - mean)))
-        part3 = -0.5 * len(mean) * np.log(2 * np.pi)
-        return part1 + part2 + part3
-
-    def logsumexp(a):
-        a_max = np.max(a)
-        sum_exp = np.sum(np.exp(a - a_max))
-        result = np.log(sum_exp) + a_max
-        return result
-
-
 
 
     # EM algorithm
@@ -145,13 +127,13 @@ def task2(x, K):
     stopping_criterion = False
     print(f"{ll_old=}")
     # print(f"{ll_gab=}")
-    
+
 
     for j in range(J):
         print(f"hola {j}")
         # pre-computations
         cholesky, log_det_sigma_half = compute_cholesky_decomp(sigma)
-        
+
         for s in range(S):
             for k in range(K):
                 # When computing (x-mu)Sigma-1(x-mu), it is equal to (x-mu)^T(L*L^T)^-1(x-mu) = (L^-1(x-mu))^T*(L^-1(x-mu))
@@ -165,7 +147,7 @@ def task2(x, K):
 
 
         ll_new = log_likelihood(x, mu, sigma, pi, K, cholesky, log_det_sigma_half, exps)
-    
+
         if j > 0:
             print(f"{ll_new=}, {ll_old=}")
             if np.abs(ll_old - ll_new) < eps:
@@ -177,7 +159,7 @@ def task2(x, K):
         #         responsibilities[s, k] = (pi[k]/det_sigma_half[k])*np.exp(exps[s,k])
 
         # responsibilities = (pi)*np.exp(exps-0.5*log_det_sigma_half)
-        
+
         logres = np.log(pi) + exps-0.5*log_det_sigma_half
         for s in range(S):
             logres[s,:] = logres[s,:] - np.max(logres[s,:])
@@ -195,7 +177,7 @@ def task2(x, K):
         # print("logres")
         # print(logres)
 
-        
+
 
         # # for s in range(S):
         # #     thesum = np.sum(responsibilities[s,:])
@@ -217,7 +199,7 @@ def task2(x, K):
             print(responsibilities)
             break
         # print(np.isnan(responsibilities).any())
-        
+
         N = np.sum(responsibilities, axis = 0)
 
         for k in range(K):
@@ -241,7 +223,7 @@ def task2(x, K):
         #     for d1 in range(D):
         #         for d2 in range(D):
         #             bigmat[s, d1, d2] = w[s]*xmu[s, d1, d2]*xmu[s, d2, d1]
-        
+
         for k in range(K):
             xmu = x.reshape([S,D]) - mu[k]
             # Calculate outer products for each sample and scale by w
@@ -251,13 +233,14 @@ def task2(x, K):
             # Now, multiply by w, which is reshaped to (S, 1, 1) for broadcasting
             bigmat *= responsibilities[:, k][:, np.newaxis, np.newaxis]
             sigma[k] = np.sum(bigmat, axis=0)/N[k]
-        
+
         pi = N/S
-    
+
     print(f"Finished with {j=}")
 
+    for k in range(K):
+        ax1[0, k].imshow(mu[k].reshape([M, M]))
 
-    
 
     """ End of your code
     """
@@ -274,9 +257,8 @@ def task3(x, mask, m_params):
         fig
             - ax[s,0] plot the corrupted test sample s
             - ax[s,1] plot the restored test sample s (by using the posterior expectation)
-            - ax[s,2] plot the groundtruth test sample s 
+            - ax[s,2] plot the groundtruth test sample s ^12
     """
-    
     S, sz, _ = x.shape
 
     fig, ax = plt.subplots(S,3,figsize=(3,8))
@@ -290,19 +272,71 @@ def task3(x, mask, m_params):
 
     """ Start of your code
     """
+    mu, sigma, pi = m_params
+
+    def compute_conditional_distribution(m_params, x_2, mask):
+        mu, sigma, pi = m_params
+        K = mu.shape[0]
+        D = mu.shape[1]
+
+        mu_cond = np.zeros((K, D))
+        sigma_cond = np.zeros((K, D, D))
+
+        mask = mask.astype(bool)
+        for k in range(K):
+            # Partition the mean and covariance matrix
+            mu_1 = mu[k][~mask]
+            mu_2 = mu[k][mask]
+            sigma_11 = sigma[k][np.ix_(~mask, ~mask)]
+            sigma_22 = sigma[k][np.ix_(mask, mask)]
+            sigma_12 = sigma[k][np.ix_(~mask, mask)]
+            sigma_21 = sigma[k][np.ix_(mask, ~mask)]
+
+            # Regularize sigma_22 to avoid singularity
+            regularization_term = 1e-4 * np.eye(sigma_22.shape[0])
+            sigma_22_reg = sigma_22 + regularization_term
+
+            # Compute conditional distribution
+            sigma_22_inv = np.linalg.inv(sigma_22_reg)
+            mu_cond[k][~mask] = mu_1 + sigma_12 @ sigma_22_inv @ (x_2 - mu_2)
+            sigma_cond[k][np.ix_(~mask, ~mask)] = sigma_11 - sigma_12 @ sigma_22_inv @ sigma_21
+
+        return mu_cond, sigma_cond
+
     M = np.shape(x)[1]
     D = M*M
     mask = np.zeros(D)
     samples = np.random.choice(range(D), size=round(D/10), replace=False)
     for sample in samples:
         mask[sample] = 1
-    
-    x_corrupted = x.copy()
-    for k in range(S):
-        x_corrupted[k] = np.reshape(x_corrupted[k].flatten()*mask, [M, M])
-    
 
+    x_flattened = x.reshape(S, -1)
+    mask_flattened = mask.flatten()
+    mask_flattened_boolean = mask_flattened.astype(bool)
 
+    x_restored = np.empty_like(x_flattened)
+    x_corrupted = np.empty_like(x_flattened)
+    for s in range(S):
+
+        x_corrupted[s] = x_flattened[s] * mask_flattened_boolean
+        x_2 = x_flattened[s][mask_flattened_boolean]
+        mu_cond, sigma_cond = compute_conditional_distribution(m_params, x_2, mask_flattened)
+
+        # Compute the expected value for the missing pixels, weighted by the component probabilities
+        # Placeholder for computing the actual expectation
+        x_m_expected = np.sum([pi[k] * mu_cond[k] for k in range(K)], axis=0)
+
+        # Fill in the observed and expected missing pixels to restore the image
+        x_restored[s][mask_flattened_boolean] = x_2
+        x_restored[s][~mask_flattened_boolean] = x_m_expected[~mask_flattened_boolean]
+
+        # Reshape the restored data back into image format and display
+        ax[s, 1].imshow(x_restored[s].reshape(M, M), vmin=0, vmax=1., cmap='gray')
+        # Corrupt the original image with the mask and display
+        ax[s, 0].imshow(x_corrupted[s].reshape(M, M), vmin=0, vmax=1., cmap='gray')
+
+    plt.tight_layout()
+    plt.show()
     """ End of your code
     """
 
@@ -320,7 +354,7 @@ if __name__ == '__main__':
         x_test = f["test_data"]
 
     # Task 2: fit GMM to FashionMNIST subset
-    K = 6 # TODO: adapt the number of GMM components
+    K = 3 # TODO: adapt the number of GMM components
     gmm_params, fig1 = task2(x_train,K)
 
     # Task 2: inpainting with conditional GMM
