@@ -58,8 +58,6 @@ def task2(x, K):
 
     np.random.seed(42)
     ### TASK 1.2
-    # print(f"{np.shape(x)=}")
-    x = x[:200, :, :]
     print(f"{np.shape(x)=}")
     M = np.shape(x)[1]
     D = M*M
@@ -67,7 +65,6 @@ def task2(x, K):
     mu = np.random.rand(K, D)
     pi = np.random.rand(K)
     sigma = np.array([np.identity(D) for k in range(K)])
-    # return (mu, sigma, pi), (fig1,fig2)
     print(f"{np.shape(pi)=}, {np.shape(sigma)=}")
 
     ### TASK 1.3
@@ -295,7 +292,7 @@ def task3(x, mask, m_params):
             sigma_21 = sigma[k][np.ix_(mask, ~mask)]
 
             # Regularize sigma_22 to avoid singularity
-            regularization_term = 1e-4 * np.eye(sigma_22.shape[0])
+            regularization_term = 1e-6 * np.eye(sigma_22.shape[0])
             sigma_22_reg = sigma_22 + regularization_term
 
             # Compute conditional distribution
@@ -371,7 +368,7 @@ if __name__ == '__main__':
         x_test = f["test_data"]
 
     # Task 2: fit GMM to FashionMNIST subset
-    K = 10 # TODO: adapt the number of GMM components
+    K = 6
     gmm_params, fig1 = task2(x_train,K)
 
     # Task 2: inpainting with conditional GMM
