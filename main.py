@@ -281,6 +281,8 @@ def task3(x, mask, m_params):
 
         mu_cond = np.zeros((K, D))
         sigma_cond = np.zeros((K, D, D))
+        pi_cond = np.zeros(K)
+        log_pi_cond = np.zeros(K)
 
         mask = mask.astype(bool)
         for k in range(K):
@@ -297,11 +299,22 @@ def task3(x, mask, m_params):
             sigma_22_reg = sigma_22 + regularization_term
 
             # Compute conditional distribution
-            sigma_22_inv = np.linalg.inv(sigma_22_reg)
-            mu_cond[k][~mask] = mu_1 + sigma_12 @ sigma_22_inv @ (x_2 - mu_2)
-            sigma_cond[k][np.ix_(~mask, ~mask)] = sigma_11 - sigma_12 @ sigma_22_inv @ sigma_21
+            # sigma_22_inv = np.linalg.inv(sigma_22_reg)
+            # mu_cond[k][~mask] = mu_1 + sigma_12 @ sigma_22_inv @ (x_2 - mu_2)
+            # sigma_cond[k][np.ix_(~mask, ~mask)] = sigma_11 - sigma_12 @ sigma_22_inv @ sigma_21
 
-        return mu_cond, sigma_cond
+            mu_cond[k][~mask] = mu_1 + sigma_12 @ np.linalg.solve(sigma_22_reg, x_2 - mu_2)
+            sigma_cond[k][np.ix_(~mask, ~mask)] = sigma_11 - sigma_12 @ np.linalg.solve(sigma_22_reg, sigma_21)
+
+        for k in range(K):
+            cholesky = np.linalg.cholesky(sigma_22_reg)
+            log_pi_cond[k] = np.log(pi[k]) -0.5*(np.sum(np.log(np.diag(cholesky)))) - 0.5*(x_2 - mu_2) @ np.linalg.solve(sigma_22_reg, (x_2 - mu_2))
+        log_pi_cond = log_pi_cond - np.max(log_pi_cond)
+        pi_cond = np.exp(log_pi_cond)
+        thesum = np.sum(pi_cond)
+        pi_cond = pi_cond / thesum
+
+        return mu_cond, sigma_cond, pi_cond
 
     M = np.shape(x)[1]
     D = M*M
@@ -320,11 +333,12 @@ def task3(x, mask, m_params):
 
         x_corrupted[s] = x_flattened[s] * mask_flattened_boolean
         x_2 = x_flattened[s][mask_flattened_boolean]
-        mu_cond, sigma_cond = compute_conditional_distribution(m_params, x_2, mask_flattened)
+        mu_cond, sigma_cond, pi_cond = compute_conditional_distribution(m_params, x_2, mask_flattened)
 
         # Compute the expected value for the missing pixels, weighted by the component probabilities
         # Placeholder for computing the actual expectation
-        x_m_expected = np.sum([pi[k] * mu_cond[k] for k in range(K)], axis=0)
+        # print(f"{pi=}, {pi_cond=}")
+        x_m_expected = np.sum([pi_cond[k] * mu_cond[k] for k in range(K)], axis=0)
 
         # Fill in the observed and expected missing pixels to restore the image
         x_restored[s][mask_flattened_boolean] = x_2
@@ -335,8 +349,8 @@ def task3(x, mask, m_params):
         # Corrupt the original image with the mask and display
         ax[s, 0].imshow(x_corrupted[s].reshape(M, M), vmin=0, vmax=1., cmap='gray')
 
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    # plt.show()
     """ End of your code
     """
 
@@ -354,7 +368,7 @@ if __name__ == '__main__':
         x_test = f["test_data"]
 
     # Task 2: fit GMM to FashionMNIST subset
-    K = 3 # TODO: adapt the number of GMM components
+    K = 10 # TODO: adapt the number of GMM components
     gmm_params, fig1 = task2(x_train,K)
 
     # Task 2: inpainting with conditional GMM
