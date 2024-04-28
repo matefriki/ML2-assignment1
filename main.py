@@ -59,7 +59,7 @@ def task2(x, K):
     np.random.seed(42)
     ### TASK 1.2
     # print(f"{np.shape(x)=}")
-    # x = x[:2000, :, :]
+    x = x[:200, :, :]
     print(f"{np.shape(x)=}")
     M = np.shape(x)[1]
     D = M*M
@@ -307,6 +307,9 @@ def task3(x, mask, m_params):
             sigma_cond[k][np.ix_(~mask, ~mask)] = sigma_11 - sigma_12 @ np.linalg.solve(sigma_22_reg, sigma_21)
 
         for k in range(K):
+            sigma_22 = sigma[k][np.ix_(mask, mask)]
+            regularization_term = 1e-4 * np.eye(sigma_22.shape[0])
+            sigma_22_reg = sigma_22 + regularization_term
             cholesky = np.linalg.cholesky(sigma_22_reg)
             log_pi_cond[k] = np.log(pi[k]) -0.5*(np.sum(np.log(np.diag(cholesky)))) - 0.5*(x_2 - mu_2) @ np.linalg.solve(sigma_22_reg, (x_2 - mu_2))
         log_pi_cond = log_pi_cond - np.max(log_pi_cond)
