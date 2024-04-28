@@ -235,9 +235,21 @@ def task2(x, K):
 
     print(f"Finished with {j=}")
 
+    ### TASK 2.5
+
     for k in range(K):
         ax1[0, k].imshow(mu[k].reshape([M, M]))
+        ax1[1, k].imshow(sigma[k].reshape([D,D]))
+        # optional: visualize the diagonal of the cov matrix
+        # ax1[1, k].imshow(np.diag(sigma[0]).reshape([M,M]))
 
+    ### TASK 2.6
+
+    for row in range(2):
+        for sample in range(num_samples//2):
+            k = np.random.choice(K, p = pi)
+            sampled_image = np.random.multivariate_normal(mu[k], sigma[k])
+            ax2[row, sample].imshow(sampled_image.reshape([M,M]))
 
     """ End of your code
     """
