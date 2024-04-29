@@ -106,7 +106,7 @@ def task2(x, K):
         ll = 0
         llarray = np.zeros(S)
         for s in range(S):
-            llarray[s] = logsumexp_stable(exps=exps[s] - 0.5 * log_det_sigma_half)
+            llarray[s] = logsumexp_stable(exps=exps[s] - log_det_sigma_half)
         return np.sum(llarray)
 
     # EM algorithm
@@ -146,9 +146,9 @@ def task2(x, K):
         #     for k in range(K):
         #         responsibilities[s, k] = (pi[k]/det_sigma_half[k])*np.exp(exps[s,k])
 
-        # responsibilities = (pi)*np.exp(exps-0.5*log_det_sigma_half)
+        # responsibilities = (pi)*np.exp(exps-log_det_sigma_half)
 
-        logres = np.log(pi) + exps-0.5*log_det_sigma_half
+        logres = np.log(pi) + exps - log_det_sigma_half
         for s in range(S):
             logres[s,:] = logres[s,:] - np.max(logres[s,:])
             responsibilities[s,:] = np.exp(logres[s,:])
@@ -209,14 +209,20 @@ def task2(x, K):
         #         for d2 in range(D):
         #             bigmat[s, d1, d2] = w[s]*xmu[s, d1, d2]*xmu[s, d2, d1]
 
-        for k in range(K):
-            xmu = x.reshape([S,D]) - mu[k]
-            # Calculating the outer product for each 's' without the weights
-            bigmat = np.einsum('si,sj->sij', xmu, xmu)
 
-            # multiply by w, is reshaped to (S, 1, 1) for broadcasting
-            bigmat *= responsibilities[:, k][:, np.newaxis, np.newaxis]
-            sigma[k] = np.sum(bigmat, axis=0)/N[k]
+        for k in range(K):
+            xmu = x.reshape([S, D]) - mu[k]
+            sigma_k = np.zeros((D, D))  # Initialize the accumulator matrix for this cluster
+
+            for s in range(S):
+                # Compute the outer product without creating bigmat explicitly
+                outer_product = np.outer(xmu[s], xmu[s])
+
+                # Scale the outer product by the responsibility and accumulate
+                sigma_k += outer_product * responsibilities[s, k]
+
+            # Divide by the number of samples in cluster k
+            sigma[k] = sigma_k / N[k]
 
         pi = N/S
 
@@ -309,7 +315,8 @@ def task3(x, mask, m_params):
             regularization_term = 1e-6 * np.eye(sigma_22.shape[0])
             sigma_22_reg = sigma_22 + regularization_term
             cholesky = np.linalg.cholesky(sigma_22_reg)
-            log_pi_cond[k] = np.log(pi[k]) -0.5*(np.sum(np.log(np.diag(cholesky)))) - 0.5*(x_2 - mu_2) @ np.linalg.solve(sigma_22_reg, (x_2 - mu_2))
+            aux = np.linalg.solve(cholesky, x_2 - mu_2)
+            log_pi_cond[k] = np.log(pi[k]) - (np.sum(np.log(np.abs(np.diag(cholesky))))) - 0.5*np.dot(aux,aux)
         log_pi_cond = log_pi_cond - np.max(log_pi_cond)
         pi_cond = np.exp(log_pi_cond)
         thesum = np.sum(pi_cond)
