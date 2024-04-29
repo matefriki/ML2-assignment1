@@ -10,7 +10,6 @@ IMPORTANT:
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-import scipy
 
 from scipy.integrate import quad
 
@@ -111,7 +110,7 @@ def task2(x, K):
         return np.sum(llarray)
 
     # EM algorithm
-    eps = 1e-6
+    eps = 1e-4
     J = 100
     ll_old = 0
     exps = np.zeros((S, K))
@@ -131,8 +130,8 @@ def task2(x, K):
                 # Making a change of variables aux = L^-1(x-mu), then the exp is equal to aux^T*aux
                 # computing aux with scipy is much faster, but scipy may not be allowed in the assignment
 
-                # aux = np.linalg.solve(cholesky[k], x[s].flatten() - mu[k])
-                aux = scipy.linalg.cho_solve((cholesky[k], True), x[s].flatten() - mu[k])
+                aux = np.linalg.solve(cholesky[k], x[s].flatten() - mu[k])
+                # aux = scipy.linalg.cho_solve((cholesky[k], True), x[s].flatten() - mu[k])
                 exps[s, k] = (-0.5)*np.dot(aux, aux)
 
         ll_new = log_likelihood(log_det_sigma_half, exps)
