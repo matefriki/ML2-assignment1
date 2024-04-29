@@ -10,11 +10,9 @@ IMPORTANT:
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from tqdm import tqdm
 import scipy
 
 from scipy.integrate import quad
-from scipy.stats import multivariate_normal
 
 
 def task1():
@@ -91,40 +89,35 @@ def task2(x, K):
         cholesky = np.empty_like(sigma_in)
         # Compute the Cholesky decomposition for each k
         for k in range(K):
-            cholesky[k] = np.linalg.cholesky(sigma_in[k] + (1e-4)*np.eye(D))
+            cholesky[k] = np.linalg.cholesky(sigma_in[k] + 1e-4 * np.eye(D))
         log_det_sigma_half = np.zeros(K)
         for k in range(K):
-            # det_sigma_half[k] = np.prod(np.diag(cholesky[k]))
             log_det_sigma_half[k] = np.sum(np.log(np.diag(cholesky[k])))
         # print("\n**************\nCholesky:")
         # print(np.diag(cholesky[0]))
         # print("\n**************\nEnd Cholesky\n")
         return cholesky, log_det_sigma_half
 
-    def logsumexp_stable(weights, exps):
+    def logsumexp_stable(exps):
         e_max = np.max(exps)
         return e_max + np.log(np.sum(np.exp(exps - e_max)))
 
 
-    def log_likelihood(x, mu, sigma, pi, K, cholesky, log_det_sigma_half, exps):
+    def log_likelihood(log_det_sigma_half, exps):
         ll = 0
         llarray = np.zeros(S)
-        for s in tqdm(range(S)):
-            llarray[s] = logsumexp_stable(pi, exps=exps[s] - 0.5*log_det_sigma_half )
+        for s in range(S):
+            llarray[s] = logsumexp_stable(exps=exps[s] - 0.5 * log_det_sigma_half)
         return np.sum(llarray)
 
-
     # EM algorithm
-    eps = 1e-4
+    eps = 1e-6
     J = 100
     ll_old = 0
     exps = np.zeros((S, K))
     print(f"{np.shape(exps)=}")
     responsibilities = np.zeros((S,K))
-    stopping_criterion = False
     print(f"{ll_old=}")
-    # print(f"{ll_gab=}")
-
 
     for j in range(J):
         print(f"hola {j}")
@@ -133,17 +126,16 @@ def task2(x, K):
 
         for s in range(S):
             for k in range(K):
-                # When computing (x-mu)Sigma-1(x-mu), it is equal to (x-mu)^T(L*L^T)^-1(x-mu) = (L^-1(x-mu))^T*(L^-1(x-mu))
+                # When computing (x-mu)Sigma-1(x-mu), it is equal to
+                # (x-mu)^T(L*L^T)^-1(x-mu) = (L^-1(x-mu))^T*(L^-1(x-mu))
                 # Making a change of variables aux = L^-1(x-mu), then the exp is equal to aux^T*aux
                 # computing aux with scipy is much faster, but scipy may not be allowed in the assignment
-                # comment/uncomment on your convenience
 
                 # aux = np.linalg.solve(cholesky[k], x[s].flatten() - mu[k])
                 aux = scipy.linalg.cho_solve((cholesky[k], True), x[s].flatten() - mu[k])
-                exps[s,k] = (-0.5)*np.dot(aux,aux)
+                exps[s, k] = (-0.5)*np.dot(aux, aux)
 
-
-        ll_new = log_likelihood(x, mu, sigma, pi, K, cholesky, log_det_sigma_half, exps)
+        ll_new = log_likelihood(log_det_sigma_half, exps)
 
         if j > 0:
             print(f"{ll_new=}, {ll_old=}")
@@ -174,8 +166,6 @@ def task2(x, K):
         # print("logres")
         # print(logres)
 
-
-
         # # for s in range(S):
         # #     thesum = np.sum(responsibilities[s,:])
         # #     responsibilities[s, :] = responsibilities[s,:]/thesum
@@ -195,7 +185,6 @@ def task2(x, K):
             print("responsibilities")
             print(responsibilities)
             break
-        # print(np.isnan(responsibilities).any())
 
         N = np.sum(responsibilities, axis = 0)
 
@@ -224,16 +213,16 @@ def task2(x, K):
         for k in range(K):
             xmu = x.reshape([S,D]) - mu[k]
             # Calculate outer products for each sample and scale by w
-            # First, calculate the outer product for each 's' without the weights
+            # Calculating the outer product for each 's' without the weights
             bigmat = np.einsum('si,sj->sij', xmu, xmu)
 
-            # Now, multiply by w, which is reshaped to (S, 1, 1) for broadcasting
+            # multiply by w, which is reshaped to (S, 1, 1) for broadcasting
             bigmat *= responsibilities[:, k][:, np.newaxis, np.newaxis]
             sigma[k] = np.sum(bigmat, axis=0)/N[k]
 
         pi = N/S
 
-    print(f"Finished with {j=}")
+    print(f"Finished EM with {j=}")
 
     ### TASK 2.5
 
@@ -281,8 +270,6 @@ def task3(x, mask, m_params):
 
     """ Start of your code
     """
-    mu, sigma, pi = m_params
-
     def compute_conditional_distribution(m_params, x_2, mask):
         mu, sigma, pi = m_params
         K = mu.shape[0]
@@ -308,10 +295,6 @@ def task3(x, mask, m_params):
             sigma_22_reg = sigma_22 + regularization_term
 
             # Compute conditional distribution
-            # sigma_22_inv = np.linalg.inv(sigma_22_reg)
-            # mu_cond[k][~mask] = mu_1 + sigma_12 @ sigma_22_inv @ (x_2 - mu_2)
-            # sigma_cond[k][np.ix_(~mask, ~mask)] = sigma_11 - sigma_12 @ sigma_22_inv @ sigma_21
-
             mu_cond[k][~mask] = mu_1 + sigma_12 @ np.linalg.solve(sigma_22_reg, x_2 - mu_2)
             sigma_cond[k][np.ix_(~mask, ~mask)] = sigma_11 - sigma_12 @ np.linalg.solve(sigma_22_reg, sigma_21)
 
@@ -320,7 +303,8 @@ def task3(x, mask, m_params):
             regularization_term = 1e-4 * np.eye(sigma_22.shape[0])
             sigma_22_reg = sigma_22 + regularization_term
             cholesky = np.linalg.cholesky(sigma_22_reg)
-            log_pi_cond[k] = np.log(pi[k]) -0.5*(np.sum(np.log(np.diag(cholesky)))) - 0.5*(x_2 - mu_2) @ np.linalg.solve(sigma_22_reg, (x_2 - mu_2))
+            log_pi_cond[k] = (np.log(pi[k]) - 0.5*(np.sum(np.log(np.diag(cholesky)))) - 0.5*(x_2 - mu_2) @ np.linalg.solve(sigma_22_reg, (x_2 - mu_2)))
+
         log_pi_cond = log_pi_cond - np.max(log_pi_cond)
         pi_cond = np.exp(log_pi_cond)
         thesum = np.sum(pi_cond)
@@ -341,15 +325,14 @@ def task3(x, mask, m_params):
 
     x_restored = np.empty_like(x_flattened)
     x_corrupted = np.empty_like(x_flattened)
-    for s in range(S):
 
+    for s in range(S):
         x_corrupted[s] = x_flattened[s] * mask_flattened_boolean
         x_2 = x_flattened[s][mask_flattened_boolean]
         mu_cond, sigma_cond, pi_cond = compute_conditional_distribution(m_params, x_2, mask_flattened)
 
         # Compute the expected value for the missing pixels, weighted by the component probabilities
         # Placeholder for computing the actual expectation
-        # print(f"{pi=}, {pi_cond=}")
         x_m_expected = np.sum([pi_cond[k] * mu_cond[k] for k in range(K)], axis=0)
 
         # Fill in the observed and expected missing pixels to restore the image
@@ -361,8 +344,6 @@ def task3(x, mask, m_params):
         # Corrupt the original image with the mask and display
         ax[s, 0].imshow(x_corrupted[s].reshape(M, M), vmin=0, vmax=1., cmap='gray')
 
-    # plt.tight_layout()
-    # plt.show()
     """ End of your code
     """
 
