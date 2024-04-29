@@ -42,7 +42,7 @@ def task2(x, K):
             - plot the 8 samples that were sampled from the fitted GMM
     """
     
-    mu, sigma, pi = [], [], np.zeros((K))  # modify this later
+    mu, sigma, pi = [], [], np.zeros((K))
     num_samples = 10
 
     fig1, ax1 = plt.subplots(2, K, figsize=(2*K, 4))
@@ -89,7 +89,7 @@ def task2(x, K):
         cholesky = np.empty_like(sigma_in)
         # Compute the Cholesky decomposition for each k
         for k in range(K):
-            cholesky[k] = np.linalg.cholesky(sigma_in[k] + 1e-4 * np.eye(D))
+            cholesky[k] = np.linalg.cholesky(sigma_in[k] + 1e-6 * np.eye(D))
         log_det_sigma_half = np.zeros(K)
         for k in range(K):
             log_det_sigma_half[k] = np.sum(np.log(np.diag(cholesky[k])))
@@ -212,11 +212,10 @@ def task2(x, K):
 
         for k in range(K):
             xmu = x.reshape([S,D]) - mu[k]
-            # Calculate outer products for each sample and scale by w
             # Calculating the outer product for each 's' without the weights
             bigmat = np.einsum('si,sj->sij', xmu, xmu)
 
-            # multiply by w, which is reshaped to (S, 1, 1) for broadcasting
+            # multiply by w, is reshaped to (S, 1, 1) for broadcasting
             bigmat *= responsibilities[:, k][:, np.newaxis, np.newaxis]
             sigma[k] = np.sum(bigmat, axis=0)/N[k]
 
@@ -227,18 +226,26 @@ def task2(x, K):
     ### TASK 2.5
 
     for k in range(K):
-        ax1[0, k].imshow(mu[k].reshape([M, M]))
-        ax1[1, k].imshow(sigma[k].reshape([D,D]))
+        ax1[0, k].imshow(mu[k].reshape([M, M]), cmap='gray')
+        ax1[1, k].imshow(sigma[k].reshape([D,D]), cmap='viridis')
         # optional: visualize the diagonal of the cov matrix
-        # ax1[1, k].imshow(np.diag(sigma[0]).reshape([M,M]))
+        # ax1[2, k].imshow(np.diag(sigma[0]).reshape([M,M]))
 
     ### TASK 2.6
 
-    for row in range(2):
-        for sample in range(num_samples//2):
-            k = np.random.choice(K, p = pi)
-            sampled_image = np.random.multivariate_normal(mu[k], sigma[k])
-            ax2[row, sample].imshow(sampled_image.reshape([M,M]))
+    for i in range(num_samples):
+        row = i // (num_samples // 2)
+        col = i % (num_samples // 2)
+        k = np.random.choice(K, p=pi)
+
+        # Use Cholesky decomposition for selected component
+        L = np.linalg.cholesky(sigma[k] + 1e-6 * np.eye(sigma[k].shape[0]))
+        z = np.random.normal(size=(mu[k].shape[0],))
+        sampled_image = mu[k] + np.dot(L, z)
+
+        ax2[row, col].imshow(sampled_image.reshape([M, M]), cmap='gray')
+        ax2[row, col].set_title('C%i' %(k))
+        ax2[row, col].axis('off')
 
     """ End of your code
     """
@@ -300,11 +307,10 @@ def task3(x, mask, m_params):
 
         for k in range(K):
             sigma_22 = sigma[k][np.ix_(mask, mask)]
-            regularization_term = 1e-4 * np.eye(sigma_22.shape[0])
+            regularization_term = 1e-6 * np.eye(sigma_22.shape[0])
             sigma_22_reg = sigma_22 + regularization_term
             cholesky = np.linalg.cholesky(sigma_22_reg)
-            log_pi_cond[k] = (np.log(pi[k]) - 0.5*(np.sum(np.log(np.diag(cholesky)))) - 0.5*(x_2 - mu_2) @ np.linalg.solve(sigma_22_reg, (x_2 - mu_2)))
-
+            log_pi_cond[k] = np.log(pi[k]) -0.5*(np.sum(np.log(np.diag(cholesky)))) - 0.5*(x_2 - mu_2) @ np.linalg.solve(sigma_22_reg, (x_2 - mu_2))
         log_pi_cond = log_pi_cond - np.max(log_pi_cond)
         pi_cond = np.exp(log_pi_cond)
         thesum = np.sum(pi_cond)
@@ -331,17 +337,14 @@ def task3(x, mask, m_params):
         x_2 = x_flattened[s][mask_flattened_boolean]
         mu_cond, sigma_cond, pi_cond = compute_conditional_distribution(m_params, x_2, mask_flattened)
 
-        # Compute the expected value for the missing pixels, weighted by the component probabilities
-        # Placeholder for computing the actual expectation
+        # Compute expected value for missing pixels, weighted by component probabilities
         x_m_expected = np.sum([pi_cond[k] * mu_cond[k] for k in range(K)], axis=0)
 
-        # Fill in the observed and expected missing pixels to restore the image
+        # Fill in observed and expected missing pixels
         x_restored[s][mask_flattened_boolean] = x_2
         x_restored[s][~mask_flattened_boolean] = x_m_expected[~mask_flattened_boolean]
 
-        # Reshape the restored data back into image format and display
         ax[s, 1].imshow(x_restored[s].reshape(M, M), vmin=0, vmax=1., cmap='gray')
-        # Corrupt the original image with the mask and display
         ax[s, 0].imshow(x_corrupted[s].reshape(M, M), vmin=0, vmax=1., cmap='gray')
 
     """ End of your code
@@ -361,7 +364,7 @@ if __name__ == '__main__':
         x_test = f["test_data"]
 
     # Task 2: fit GMM to FashionMNIST subset
-    K = 6
+    K = 5
     gmm_params, fig1 = task2(x_train,K)
 
     # Task 2: inpainting with conditional GMM
